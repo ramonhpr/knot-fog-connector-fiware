@@ -1,0 +1,26 @@
+{
+  "name": "knot-fog-connector-fiware",
+  "version": "0.1.0",
+  "description": "KNoT fog connector with FIWARE",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/CESARBR/knot-fog-connector-fiware.git"
+  },
+  "main": "./cjs/index.js",
+  "module": "./esm/index.js",
+  "license": "MIT",
+  "scripts": {
+    "lint": "eslint .",
+    "build": "babel esm --out-dir cjs"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "babel-cli": "^6.26.0",
+    "babel-preset-env": "^1.7.0",
+    "eslint": "^4.19.1",
+    "eslint-config-airbnb": "^17.0.0",
+    "eslint-plugin-import": "^2.13.0",
+    "eslint-plugin-jsx-a11y": "^6.1.1",
+    "eslint-plugin-react": "^7.10.0"
+  }
+}
