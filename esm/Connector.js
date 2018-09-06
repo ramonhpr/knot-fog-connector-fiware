@@ -1,5 +1,17 @@
 import request from 'request-promise-native';
 
+async function deviceExists(url, headers, id) {
+  try {
+    await request.get({ url: `${url}/${id}`, headers, json: true });
+  } catch (error) {
+    if (error.response.statusCode === 404) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 async function serviceExists(url, headers) {
   const service = await request.get({ url, headers, json: true });
   return service.count > 0;
@@ -57,6 +69,21 @@ async function createService(iotAgentUrl, orionUrl, servicePath, apiKey, entityT
   });
 }
 
+function mapDeviceToFiware(device) {
+  return {
+    device_id: device.id,
+    entity_name: device.id,
+    entity_type: 'device',
+    protocol: 'IoTA-UL',
+    transport: 'MQTT',
+    static_attributes: [{
+      name: 'name',
+      type: 'string',
+      value: device.name,
+    }],
+  };
+}
+
 class Connector {
   constructor(settings) {
     this.iotAgentUrl = `http://${settings.iota.hostname}:${settings.iota.port}`;
@@ -67,7 +94,22 @@ class Connector {
     await createService(this.iotAgentUrl, this.orionUrl, '/device', 'default', 'device');
   }
 
-  async addDevice(device) { // eslint-disable-line no-empty-function,no-unused-vars
+  async addDevice(device) {
+    const url = `${this.iotAgentUrl}/iot/devices`;
+    const headers = {
+      'fiware-service': 'knot',
+      'fiware-servicepath': '/device',
+    };
+
+    if (await deviceExists(url, headers, device.id)) {
+      return;
+    }
+
+    const fiwareDevice = mapDeviceToFiware(device);
+
+    await request.post({
+      url, headers, body: { devices: [fiwareDevice] }, json: true,
+    });
   }
 
   async removeDevice(id) { // eslint-disable-line no-empty-function,no-unused-vars
