@@ -164,6 +164,7 @@ class Connector {
 
   async start() {
     this.onDataUpdatedCb = _.noop();
+    this.onDataRequestedCb = _.noop();
 
     await createService(this.iotAgentUrl, this.orionUrl, '/device', 'default', 'device');
 
@@ -184,12 +185,19 @@ class Connector {
     const message = parseULMessage(topic.toString(), payload.toString());
     if (message.command === 'setData') {
       await this.handleSetData(topic, payload, message);
+    } else if (message.command === 'getData') {
+      await this.handleGetData(topic, payload, message);
     }
   }
 
   async handleSetData(topic, payload, message) {
     await this.client.publish(`${topic}exe`, payload);
     this.onDataUpdatedCb(message.id, parseInt(message.entityId, 10), message.value);
+  }
+
+  async handleGetData(topic, payload, message) {
+    await this.client.publish(`${topic}exe`, payload);
+    this.onDataRequestedCb(message.id, parseInt(message.entityId, 10));
   }
 
   async addDevice(device) {
@@ -279,7 +287,8 @@ class Connector {
   }
 
   // cb(event) where event is { id, sensorId }
-  onDataRequested(cb) { // eslint-disable-line no-empty-function,no-unused-vars
+  async onDataRequested(cb) {
+    this.onDataRequestedCb = cb;
   }
 
   // cb(event) where event is { id, sensorId, data }
