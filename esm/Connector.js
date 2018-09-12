@@ -123,6 +123,37 @@ function mapSensorFromFiware(device) {
   return schema;
 }
 
+function parseULValue(value) {
+  if (value.indexOf('=') === -1) {
+    return value;
+  }
+
+  const objValue = {};
+  const attrs = value.split('|');
+
+  attrs.forEach((attr) => {
+    objValue[attr.slice(0, attr.indexOf('='))] = attr.slice(attr.indexOf('=') + 1, attr.length);
+  });
+
+  return objValue;
+}
+
+
+function parseULMessage(topic, message) {
+  const apiKey = topic.split('/')[1];
+  const entityId = message.slice(0, message.indexOf('@'));
+  const command = message.slice(message.indexOf('@') + 1, message.indexOf('|'));
+  const value = parseULValue(message.slice(message.indexOf('|') + 1, message.length));
+
+  const id = apiKey === 'default' ? entityId : apiKey;
+
+  return {
+    id,
+    entityId,
+    command,
+    value,
+  };
+}
 
 class Connector {
   constructor(settings) {
@@ -132,14 +163,33 @@ class Connector {
   }
 
   async start() {
+    this.onDataUpdatedCb = _.noop();
+
     await createService(this.iotAgentUrl, this.orionUrl, '/device', 'default', 'device');
 
     return new Promise((resolve, reject) => {
       this.client = mqtt.connect(this.iotAgentMQTT);
 
-      this.client.on('connect', () => resolve());
+      this.client.on('connect', () => {
+        this.client.on('message', async (topic, payload) => {
+          await this.messageHandler(topic, payload);
+        });
+        return resolve();
+      });
       this.client.on('error', error => reject(error));
     });
+  }
+
+  async messageHandler(topic, payload) {
+    const message = parseULMessage(topic.toString(), payload.toString());
+    if (message.command === 'setData') {
+      await this.handleSetData(topic, payload, message);
+    }
+  }
+
+  async handleSetData(topic, payload, message) {
+    await this.client.publish(`${topic}exe`, payload);
+    this.onDataUpdatedCb(message.id, parseInt(message.entityId, 10), message.value);
   }
 
   async addDevice(device) {
@@ -205,7 +255,10 @@ class Connector {
       'fiware-servicepath': `/device/${id}`,
     };
 
-    const sensors = schemaList.map(schema => mapSensorToFiware(id, schema));
+    const sensors = await Promise.all(schemaList.map(async (schema) => {
+      await this.client.subscribe(`/${id}/${schema.sensor_id}/cmd`);
+      return mapSensorToFiware(id, schema);
+    }));
 
     await request.post({
       url, headers, body: { devices: sensors }, json: true,
@@ -230,7 +283,8 @@ class Connector {
   }
 
   // cb(event) where event is { id, sensorId, data }
-  onDataUpdated(cb) { // eslint-disable-line no-empty-function,no-unused-vars
+  async onDataUpdated(cb) {
+    this.onDataUpdatedCb = cb;
   }
 }
 
