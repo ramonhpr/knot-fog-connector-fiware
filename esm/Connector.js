@@ -273,7 +273,25 @@ class Connector {
     });
   }
 
-  async updateProperties(id, properties) { // eslint-disable-line no-empty-function,no-unused-vars
+  async updateProperties(id, properties) {
+    const url = `${this.iotAgentUrl}/iot/devices/${id}`;
+    const headers = {
+      'fiware-service': 'knot',
+      'fiware-servicepath': '/device',
+    };
+
+    const property = Object.keys(properties)[0];
+    const value = properties[property];
+
+    const attribute = {
+      name: property,
+      type: typeof value,
+    };
+
+    await request.put({
+      url, headers, body: { attributes: [attribute] }, json: true,
+    });
+    await this.client.publish(`/default/${id}/attrs/${property}`, value.toString());
   }
 
   // Cloud to device (fog)
