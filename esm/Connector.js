@@ -138,7 +138,6 @@ function parseULValue(value) {
   return objValue;
 }
 
-
 function parseULMessage(topic, message) {
   const apiKey = topic.split('/')[1];
   const entityId = message.slice(0, message.indexOf('@'));
@@ -165,6 +164,7 @@ class Connector {
   async start() {
     this.onDataUpdatedCb = _.noop();
     this.onDataRequestedCb = _.noop();
+    this.onConfigUpdatedCb = _.noop();
 
     await createService(this.iotAgentUrl, this.orionUrl, '/device', 'default', 'device');
 
@@ -187,6 +187,8 @@ class Connector {
       await this.handleSetData(topic, payload, message);
     } else if (message.command === 'getData') {
       await this.handleGetData(topic, payload, message);
+    } else if (message.command === 'setConfig') {
+      await this.handleSetConfig(topic, message);
     }
   }
 
@@ -198,6 +200,27 @@ class Connector {
   async handleGetData(topic, payload, message) {
     await this.client.publish(`${topic}exe`, payload);
     this.onDataRequestedCb(message.id, parseInt(message.entityId, 10));
+  }
+
+  async handleSetConfig(topic, ulMessage) {
+    const requiredProperties = ['sensor_id', 'event_flags', 'time_sec'];
+    const message = ulMessage;
+    const configKeys = Object.keys(message.value);
+
+    if (!requiredProperties.every(val => configKeys.includes(val))) {
+      const response = 'The following properties are required: sensor_id, event_flags and time_sec';
+      await this.client.publish(`${topic}exe`, `${message.id}@setConfig|${response}`);
+      return;
+    }
+
+    _.forEach(message.value, (value, key) => {
+      const intValue = parseInt(value, 10);
+      message.value[key] = !Number.isNaN(intValue) && Number.isFinite(intValue) ? intValue : value;
+    });
+
+    await this.client.publish(`${topic}exe`, `${message.id}@setConfig|`);
+
+    this.onConfigUpdatedCb(message.id, [message.value]);
   }
 
   async addDevice(device) {
@@ -217,6 +240,7 @@ class Connector {
       url, headers, body: { devices: [fiwareDevice] }, json: true,
     });
     await createService(this.iotAgentUrl, this.orionUrl, `/device/${device.id}`, device.id, 'sensor');
+    await this.client.subscribe(`/default/${device.id}/cmd`);
   }
 
   async removeDevice(id) { // eslint-disable-line no-empty-function,no-unused-vars
@@ -297,7 +321,8 @@ class Connector {
   // Cloud to device (fog)
 
   // cb(event) where event is { id, config: {} }
-  onConfigUpdated(cb) { // eslint-disable-line no-empty-function,no-unused-vars
+  async onConfigUpdated(cb) {
+    this.onConfigUpdatedCb = cb;
   }
 
   // cb(event) where event is { id, properties: {} }
