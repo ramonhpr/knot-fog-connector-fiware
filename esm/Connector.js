@@ -206,6 +206,17 @@ async function removeDeviceFromOrion(orionUrl, id) {
   await Promise.all(promises);
 }
 
+async function subscribeToEntities(client, devices) {
+  const promises = devices.map(async (device) => {
+    await client.subscribe(`/default/${device.id}/cmd`);
+    device.schema.map(async (sensor) => {
+      await client.subscribe(`/${device.id}/${sensor.sensor_id}/cmd`);
+    });
+  });
+
+  await Promise.all(promises);
+}
+
 class Connector {
   constructor(settings) {
     this.iotAgentUrl = `http://${settings.iota.hostname}:${settings.iota.port}`;
@@ -224,7 +235,9 @@ class Connector {
     return new Promise((resolve, reject) => {
       this.client = mqtt.connect(this.iotAgentMQTT);
 
-      this.client.on('connect', () => {
+      this.client.on('connect', async () => {
+        const devices = await this.listDevices();
+        await subscribeToEntities(this.client, devices);
         this.client.on('message', async (topic, payload) => {
           await this.messageHandler(topic, payload);
         });
